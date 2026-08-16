@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { MarkdownBody } from "./MarkdownBody";
-import { describeCron, type AsyncStatus, type AsyncTaskReport } from "@/lib/async-status";
+import { describeCron } from "@/lib/cron-describe";
+import type { AsyncStatus, AsyncTaskReport } from "@/lib/async-status";
 
 function buttonStyle(disabled?: boolean): React.CSSProperties {
   return {
