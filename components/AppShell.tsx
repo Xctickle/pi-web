@@ -11,6 +11,8 @@ import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { AsyncTasksPanel } from "./AsyncTasksPanel";
+import { BackupsPanel } from "./BackupsPanel";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
@@ -102,6 +104,8 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
+  const [asyncPanelOpen, setAsyncPanelOpen] = useState(false);
+  const [backupsPanelOpen, setBackupsPanelOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -964,6 +968,29 @@ export function AppShell() {
                 <path d="M15 7V2" />
                 <path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0Z" />
                 <path d="M12 19v3" />
+              </svg>
+            ),
+          },
+          {
+             label: translate("common.asyncTasks"),
+            onClick: () => setAsyncPanelOpen(true),
+            disabled: false,
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            ),
+          },
+          {
+             label: translate("common.backups"),
+            onClick: () => setBackupsPanelOpen(true),
+            disabled: false,
+            icon: (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3" />
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
               </svg>
             ),
           },
@@ -2248,6 +2275,8 @@ export function AppShell() {
       </div>
     </div>
     {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
+    {asyncPanelOpen && <AsyncTasksPanel onClose={() => setAsyncPanelOpen(false)} />}
+    {backupsPanelOpen && <BackupsPanel onClose={() => setBackupsPanelOpen(false)} />}
     {projectTrustDialogOpen && projectTrustCwd && (
       <ProjectTrustDialog
         cwd={projectTrustCwd}
