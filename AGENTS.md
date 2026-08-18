@@ -48,6 +48,8 @@ app/api/
   agent/[id]/events/route.ts      GET SSE stream
   agent/running/route.ts          GET currently-running session ids
   agent/running/events/route.ts   GET SSE stream of currently-running session ids
+  async-tasks/route.ts            GET status snapshot | POST mutate one task
+  backups/route.ts                GET backup status (read-only)
   auth/all-providers/route.ts     GET API-key provider list
   auth/api-key/[provider]/route.ts GET/POST/DELETE provider API key status/storage
   auth/login/[provider]/route.ts  GET OAuth/device-code SSE | POST manual code
@@ -70,6 +72,9 @@ app/api/
 
 lib/
   agent-client.ts      typed fetch helper for /api/agent commands
+  async-schedule.ts    pure ScheduleSpec ⇄ cron helpers (client-safe)
+  async-status.ts      async-task read model (tasks dir + crontab, read-only)
+  async-mutations.ts   async-task writer: briefs/markers/crontab blocks (server only)
   draft-store.ts       local draft persistence helpers
   file-access.ts       allowed file roots for /api/files and worktrees
   file-paths.ts        client/server path encoding helpers
@@ -86,6 +91,7 @@ lib/
 
 components/
   AppShell.tsx        layout + URL state + tab management
+  AsyncTasksPanel.tsx kanban board for cron async tasks (drag + edit drawers)
   SessionSidebar.tsx  session tree + FileExplorer
   ChatWindow.tsx      chat composition + completion sound wrapper
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
@@ -122,6 +128,13 @@ hooks/
 `AgentSession.fork()` **mutates the wrapper's inner state in-place** — after fork, `inner.sessionId` is the *new* session's id. If the wrapper stays alive in the registry under the old id, the next request gets the already-forked state and subsequent forks produce a corrupt `parentSession` chain.
 
 **Fix**: `send("fork")` captures `newSessionId`, then calls `this.destroy()` before returning. The next request for the original session reloads a clean AgentSession from the original file.
+
+### Async tasks kanban (personal fork infrastructure)
+- Reads `~/.pi/async-tasks/` conventions: `<name>.md` brief, `.done-<name>` marker, `run-<name>.log`, `failed-<name>-*.log`, `<name>.model` override, plus crontab lines invoking `~/bin/async-task.sh`.
+- `lib/async-status.ts` is the read model; run-log segment headers carry a `(workdir: ...)` suffix — the separator regex must tolerate it or `lastRun` silently becomes null.
+- `lib/async-mutations.ts` rewrites **only one task's crontab block** per call: the task's command lines (`async-task.sh <name>` / `rm -f .done-<name>`) plus the directly-preceding comment block (which is reattached as the new block header, so no info is lost). Every write keeps a timestamped `crontab.backup-*` in the tasks dir. Never touch night-guard or unrelated lines.
+- Task names are strictly `[a-z0-9][a-z0-9-]*` — that validation is the path-traversal guard for every POST action.
+- `ScheduleSpec` (lib/async-schedule.ts) is the single source for spec⇔cron conversion; the client imports the same pure module to preview generated lines. Rolling tasks get a `rm -f .done-<name>` line 5 minutes before the earliest run.
 
 ### Two kinds of branching — don't confuse them
 - **Fork** (Fork button on user message): creates a new independent `.jsonl` file. Shown as a child in the sidebar tree via `parentSession` header field.
