@@ -49,13 +49,23 @@ function formatTime(iso: string): string {
   return date.toLocaleString();
 }
 
-/** Column assignment: failed (missing brief / last exit>0) > done > scheduled > draft. */
+/**
+ * Column assignment:
+ *   failed (missing brief / last exit>0) > rolling (cron + autoClear: never terminal,
+ *   the done marker only closes the current round) > done > scheduled > draft.
+ */
 function taskColumn(task: AsyncTaskReport): ColumnId {
   if (!task.briefExists) return "failed";
   if ((task.lastRun?.exitCode ?? 0) > 0) return "failed";
+  if (task.cron && task.autoClear) return "scheduled";
   if (task.doneMarker.exists) return "done";
   if (task.cron) return "scheduled";
   return "draft";
+}
+
+/** True for rolling tasks: scheduled and auto-clearing the done marker each round. */
+function isRollingTask(task: AsyncTaskReport): boolean {
+  return Boolean(task.cron) && task.autoClear;
 }
 
 const WEEKDAY_KEYS = ["asyncTasks.weekday.0", "asyncTasks.weekday.1", "asyncTasks.weekday.2", "asyncTasks.weekday.3", "asyncTasks.weekday.4", "asyncTasks.weekday.5", "asyncTasks.weekday.6"];
@@ -134,7 +144,13 @@ function TaskCard({
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--text)", fontWeight: 600, wordBreak: "break-all" }}>{task.name}</span>
         {failed ? <span style={chipStyle("#ef4444")}>{t("asyncTasks.lastExitFail")}</span> : null}
-        {task.doneMarker.exists ? <span style={chipStyle("#22c55e")}>{t("asyncTasks.statusDone")}</span> : null}
+        {task.doneMarker.exists ? (
+          isRollingTask(task) ? (
+            <span style={chipStyle("#22c55e")}>{t("asyncTasks.rollingLastDone", { time: task.doneMarker.timestamp ? formatTime(task.doneMarker.timestamp) : "" })}</span>
+          ) : (
+            <span style={chipStyle("#22c55e")}>{t("asyncTasks.statusDone")}</span>
+          )
+        ) : null}
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "normal" }}>
         {scheduleText(task, t)}
@@ -379,6 +395,7 @@ function DetailDrawer({
             ▶ {t("asyncTasks.runNow")}
           </button>
         </div>
+        {isRollingTask(task) ? <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("asyncTasks.rollingNote")}</div> : null}
 
         {/* Schedule */}
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -711,6 +728,22 @@ export function AsyncTasksPanel({ onClose }: { onClose: () => void }) {
     if (column === "failed") return;
     const task = data?.tasks.find((item) => item.name === name);
     if (!task) return;
+    if (isRollingTask(task)) {
+      if (column === "done") {
+        if (!window.confirm(t("asyncTasks.rollingRetireConfirm"))) return;
+        const removed = await mutate("save-schedule", { name, spec: null });
+        if (!removed) return;
+        await mutate("set-done", { name, done: true });
+      } else if (column === "draft") {
+        if (!window.confirm(t("asyncTasks.rollingToDraftConfirm"))) return;
+        const removed = await mutate("save-schedule", { name, spec: null });
+        if (!removed) return;
+        await mutate("set-done", { name, done: false });
+      } else {
+        showToast(t("asyncTasks.rollingStayScheduled"));
+      }
+      return;
+    }
     if (column === "done") {
       if (!task.doneMarker.exists) await mutate("set-done", { name, done: true });
     } else if (column === "scheduled") {
