@@ -28,7 +28,7 @@ const execFileAsync = promisify(execFile);
 export const ASYNC_TASKS_DIR = path.join(os.homedir(), ".pi", "async-tasks");
 export const ASYNC_TASK_WRAPPER = path.join(os.homedir(), "bin", "async-task.sh");
 
-const RUN_SEGMENT_SEPARATOR = /^===\s+(\S+)\s+run\s+===$/;
+const RUN_SEGMENT_SEPARATOR = /^===\s+(\S+)\s+run\b.*===$/;
 const RUN_EXIT_LINE = /^===\s+exit=(\d+)\s+===$/;
 const FAILED_LOG_PATTERN = /^failed-(.+)-(\d{8})\.log$/;
 const BRIEF_FILE_PATTERN = /^[a-z0-9][a-z0-9-]*\.md$/;
@@ -82,6 +82,10 @@ export interface AsyncTaskReport {
   lastRun: RunSegment | null;
   failedLogs: FailedLogRef[];
   cron: CronTaskRef | null;
+  /** True when a crontab "rm -f .done-<name>" line precedes the run. */
+  autoClear: boolean;
+  /** First line of `<name>.model` override file, null when absent. */
+  modelOverride: string | null;
 }
 
 export type KeepAwakeMode = "off" | "always" | "until";
@@ -241,6 +245,15 @@ export async function collectAsyncStatus(): Promise<AsyncStatus> {
     cronError = error instanceof Error ? error.message : String(error);
   }
   const cronEntries = cronAvailable ? parseCrontab(crontabText) : [];
+  // Detect rolling tasks: any crontab line clearing the done marker counts,
+  // including lines parseCrontab skips (they do not mention async-task.sh).
+  const autoClearNames = new Set<string>();
+  if (cronAvailable) {
+    for (const line of crontabText.split("\n")) {
+      const clearMatch = /rm\s+-f\s+\S*\.done-([a-z0-9][a-z0-9-]*)/.exec(line);
+      if (clearMatch) autoClearNames.add(clearMatch[1]);
+    }
+  }
   const cronByName = new Map<string, CronTaskRef>();
   const cronUnnamed: CronTaskRef[] = [];
   for (const entry of cronEntries) {
@@ -273,6 +286,7 @@ export async function collectAsyncStatus(): Promise<AsyncStatus> {
       : { exists: true, content: doneContent, ...parseDoneMarker(doneContent) };
     const runContent = await readTextIfPresent(path.join(dir, `run-${name}.log`));
     const segments = runContent !== null ? parseRunLog(runContent) : [];
+    const modelContent = await readTextIfPresent(path.join(dir, `${name}.model`));
     tasks.push({
       name,
       briefExists: briefContent !== null,
@@ -281,6 +295,8 @@ export async function collectAsyncStatus(): Promise<AsyncStatus> {
       lastRun: segments.length ? segments[segments.length - 1] : null,
       failedLogs: failedLogsByTask.get(name) ?? [],
       cron: cronByName.get(name) ?? null,
+      autoClear: autoClearNames.has(name),
+      modelOverride: modelContent !== null ? modelContent.split("\n")[0].trim() || null : null,
     });
   }
 
@@ -295,6 +311,8 @@ export async function collectAsyncStatus(): Promise<AsyncStatus> {
       lastRun: null,
       failedLogs: failedLogsByTask.get(entry.rawLine) ?? [],
       cron: entry,
+      autoClear: entry.taskName ? autoClearNames.has(entry.taskName) : false,
+      modelOverride: null,
     });
   }
 
